@@ -441,7 +441,9 @@
         if (g.isModel || active.indexOf(g) !== -1) params.set(g.key, self.selection[g.key].key);
         else params.delete(g.key);
       });
-      window.history.replaceState(null, '', window.location.pathname + '?' + params.toString() + window.location.hash);
+      try {
+        window.history.replaceState(null, '', window.location.pathname + '?' + params.toString() + window.location.hash);
+      } catch (e) { /* some embedded views block URL changes */ }
     }
   };
 
