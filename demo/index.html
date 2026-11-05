@@ -1,0 +1,471 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Guitar Configurator Demo</title>
+<style>body{margin:0;background:#fff;color:#1a1a1a;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}h2{font-size:32px}
+.gc {
+  --gc-text: inherit;
+  --gc-muted: rgba(0, 0, 0, 0.6);
+  --gc-border: rgba(0, 0, 0, 0.14);
+  --gc-accent: #111;
+  --gc-stage-bg: radial-gradient(ellipse at 50% 40%, #faf8f4 0%, #ece8e1 100%);
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 48px;
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 48px 20px;
+  color: var(--gc-text);
+  box-sizing: border-box;
+}
+.gc *, .gc *::before, .gc *::after { box-sizing: border-box; }
+
+/* Preview */
+.gc-preview { position: sticky; top: 24px; align-self: start; }
+.gc-stage {
+  position: relative;
+  aspect-ratio: 3 / 8;
+  max-height: 82vh;
+  margin: 0 auto;
+  background: var(--gc-stage-bg);
+  border-radius: 12px;
+  overflow: hidden;
+}
+.gc-stage > .gc-svg,
+.gc-stage > .gc-base,
+.gc-layers,
+.gc-layers img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+.gc-stage > .gc-svg { padding: 4% 0; }
+.gc-stage > .gc-base, .gc-layers img { object-fit: contain; }
+.gc-svg [data-slot] { transition: fill 0.25s ease; }
+
+/* Options */
+.gc-title { margin: 0 0 4px; }
+.gc-subtitle { margin: 0 0 24px; color: var(--gc-muted); }
+.gc-group { border: 0; padding: 0; margin: 0 0 24px; }
+.gc-group-name { font-weight: 600; margin-bottom: 10px; padding: 0; }
+.gc-group-current { font-weight: 400; color: var(--gc-muted); }
+.gc-choices { display: flex; flex-wrap: wrap; gap: 10px; }
+.gc-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 84px;
+  padding: 10px 6px;
+  border: 1px solid var(--gc-border);
+  border-radius: 10px;
+  cursor: pointer;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.25;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.gc-choice:hover { border-color: rgba(0, 0, 0, 0.35); }
+.gc-choice:has(input:checked) { border-color: var(--gc-accent); box-shadow: 0 0 0 1px var(--gc-accent); }
+.gc-choice:has(input:focus-visible) { outline: 2px solid var(--gc-accent); outline-offset: 2px; }
+.gc-swatch {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid rgba(0, 0, 0, 0.2);
+  background-size: cover;
+  background-position: center;
+}
+.gc-swatch--empty { display: none; }
+.gc-choice-price { color: var(--gc-muted); font-size: 12px; }
+.gc-visually-hidden {
+  position: absolute !important;
+  width: 1px; height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}
+
+/* Summary */
+.gc-summary { border-top: 1px solid var(--gc-border); padding-top: 20px; margin-top: 8px; }
+.gc-summary ul { list-style: none; margin: 0 0 16px; padding: 0; font-size: 14px; }
+.gc-summary li { display: flex; justify-content: space-between; gap: 12px; padding: 4px 0; color: var(--gc-muted); }
+.gc-total { display: flex; justify-content: space-between; font-size: 20px; font-weight: 600; margin-bottom: 16px; }
+.gc-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+.gc-actions .button { flex: 1 1 auto; }
+.gc-btn {
+  flex: 1 1 auto;
+  padding: 14px 20px;
+  border-radius: 8px;
+  border: 1px solid var(--gc-accent);
+  background: var(--gc-accent);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.gc-btn[disabled] { opacity: 0.5; cursor: not-allowed; }
+.gc-btn--secondary { flex: 0 0 auto; background: transparent; color: var(--gc-accent); }
+.gc-message { min-height: 1.4em; margin: 12px 0 0; font-size: 14px; color: var(--gc-muted); }
+.gc-message--error { color: #b00020; }
+
+@media (max-width: 800px) {
+  .gc { grid-template-columns: 1fr; gap: 24px; padding: 24px 16px; }
+  .gc-preview { position: static; }
+  .gc-stage { max-height: 55vh; }
+  .gc-choice { width: calc(25% - 8px); min-width: 72px; }
+}
+</style></head><body>
+<section class="gc" data-guitar-configurator data-demo>
+  <div class="gc-preview"><div class="gc-stage" data-gc-stage><div class="gc-layers" data-gc-layers></div></div></div>
+  <div class="gc-panel">
+    <h2 class="gc-title">Lark Custom</h2>
+    <p class="gc-subtitle">Build yours. Every Lark is made to order.</p>
+    <div data-gc-options></div>
+    <div class="gc-summary">
+      <ul data-gc-summary></ul>
+      <div class="gc-total"><span>Total</span><span data-gc-total></span></div>
+      <div class="gc-actions"><button type="button" class="gc-btn" data-gc-add>Add build to cart</button>
+      <button type="button" class="gc-btn gc-btn--secondary" data-gc-share>Share build</button></div>
+      <p class="gc-message" data-gc-message role="status" aria-live="polite"></p>
+    </div>
+  </div>
+  <script type="application/json" data-configurator-config>{"sectionId":"demo","currency":"USD","locale":"en-US","baseImage":false,"product":{"title":"Lark Custom","variantId":1,"price":189900},"choices":[{"group":"Body finish","slot":"body","label":"Cherry red","swatch":"#9e1b22","thumb":null,"image":null,"upchargeVariantId":null,"upchargePrice":0,"isDefault":true},{"group":"Body finish","slot":"body","label":"Seafoam","swatch":"#8fcfbf","thumb":null,"image":null,"upchargeVariantId":null,"upchargePrice":0,"isDefault":false},{"group":"Body finish","slot":"body","label":"Midnight blue","swatch":"#1d2b4f","thumb":null,"image":null,"upchargeVariantId":null,"upchargePrice":0,"isDefault":false},{"group":"Body finish","slot":"body","label":"Natural ash","swatch":"#d8bd8a","thumb":null,"image":null,"upchargeVariantId":1,"upchargePrice":15000,"isDefault":false},{"group":"Body finish","slot":"body","label":"Gloss black","swatch":"#141414","thumb":null,"image":null,"upchargeVariantId":null,"upchargePrice":0,"isDefault":false},{"group":"Pickguard","slot":"pickguard","label":"Black","swatch":"#1a1a1a","thumb":null,"image":null,"upchargeVariantId":null,"upchargePrice":0,"isDefault":true},{"group":"Pickguard","slot":"pickguard","label":"Parchment","swatch":"#f2f0ea","thumb":null,"image":null,"upchargeVariantId":null,"upchargePrice":0,"isDefault":false},{"group":"Pickguard","slot":"pickguard","label":"Tortoise","swatch":"#5a2e1a","thumb":null,"image":null,"upchargeVariantId":1,"upchargePrice":4000,"isDefault":false},{"group":"Fretboard","slot":"fretboard","label":"Rosewood","swatch":"#4a2a1a","thumb":null,"image":null,"upchargeVariantId":null,"upchargePrice":0,"isDefault":true},{"group":"Fretboard","slot":"fretboard","label":"Maple","swatch":"#e3c48a","thumb":null,"image":null,"upchargeVariantId":null,"upchargePrice":0,"isDefault":false},{"group":"Fretboard","slot":"fretboard","label":"Ebony","swatch":"#1b1410","thumb":null,"image":null,"upchargeVariantId":1,"upchargePrice":12000,"isDefault":false},{"group":"Headstock","slot":"headstock","label":"Natural","swatch":"#c9a46b","thumb":null,"image":null,"upchargeVariantId":null,"upchargePrice":0,"isDefault":true},{"group":"Headstock","slot":"headstock","label":"Black","swatch":"#151515","thumb":null,"image":null,"upchargeVariantId":1,"upchargePrice":3000,"isDefault":false},{"group":"Pickups","slot":"pickups","label":"Black","swatch":"#161616","thumb":null,"image":null,"upchargeVariantId":null,"upchargePrice":0,"isDefault":true},{"group":"Pickups","slot":"pickups","label":"Cream","swatch":"#efe3c2","thumb":null,"image":null,"upchargeVariantId":null,"upchargePrice":0,"isDefault":false},{"group":"Pickups","slot":"pickups","label":"Nickel covers","swatch":"#b9bcc0","thumb":null,"image":null,"upchargeVariantId":1,"upchargePrice":6000,"isDefault":false},{"group":"Hardware","slot":"hardware","label":"Chrome","swatch":"#c7cbd0","thumb":null,"image":null,"upchargeVariantId":null,"upchargePrice":0,"isDefault":true},{"group":"Hardware","slot":"hardware","label":"Black","swatch":"#2a2a2a","thumb":null,"image":null,"upchargeVariantId":1,"upchargePrice":5000,"isDefault":false},{"group":"Hardware","slot":"hardware","label":"Gold","swatch":"#caa54f","thumb":null,"image":null,"upchargeVariantId":1,"upchargePrice":9000,"isDefault":false}]}</script>
+</section>
+<script>/*
+ * Guitar Configurator for Shopify
+ * Reads its options from the JSON rendered by sections/guitar-configurator.liquid,
+ * shows a live preview, and adds the build (plus any upcharge items) to the cart.
+ */
+(function () {
+  'use strict';
+
+  // Drawing order for preview layers (first = bottom).
+  var SLOT_ORDER = ['body', 'pickguard', 'fretboard', 'headstock', 'pickups', 'hardware'];
+
+  function slug(s) {
+    return String(s || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  }
+
+  function el(tag, attrs, children) {
+    var node = document.createElement(tag);
+    Object.keys(attrs || {}).forEach(function (k) {
+      if (k === 'text') node.textContent = attrs[k];
+      else if (k === 'html') node.innerHTML = attrs[k];
+      else node.setAttribute(k, attrs[k]);
+    });
+    (children || []).forEach(function (c) { if (c) node.appendChild(c); });
+    return node;
+  }
+
+  // Placeholder guitar drawing. Every recolourable part has data-slot="...".
+  // Replace with real photo layers by adding images to choices in the theme editor.
+  function guitarSVG() {
+    var frets = [192, 222, 250, 276, 300, 322, 343, 362, 380, 396, 411, 425, 438, 450];
+    var fretLines = frets.map(function (y) {
+      return '<line x1="135" x2="165" y1="' + y + '" y2="' + y + '" stroke="#cfcfcf" stroke-width="1.5"/>';
+    }).join('');
+    var inlays = [236, 288, 332, 371, 418].map(function (y) {
+      return '<circle cx="150" cy="' + y + '" r="3" fill="#f3efe6" opacity=".85"/>';
+    }).join('') + '<circle cx="144" cy="444" r="3" fill="#f3efe6" opacity=".85"/><circle cx="156" cy="444" r="3" fill="#f3efe6" opacity=".85"/>';
+    var strings = [0, 1, 2, 3, 4, 5].map(function (i) {
+      var x1 = 139 + i * 4.4, x2 = 129 + i * 8.4;
+      return '<line x1="' + x1 + '" y1="160" x2="' + x2 + '" y2="688" stroke="#eceae6" stroke-width="' + (1.4 - i * 0.12) + '" opacity=".9"/>';
+    }).join('');
+    var body = 'M150,440 C120,440 105,420 95,400 C80,375 60,380 58,410 C55,450 75,480 70,520 C62,560 40,600 45,660 C50,740 100,785 150,785 C200,785 252,745 255,670 C258,610 238,570 232,530 C226,490 245,460 240,430 C236,400 215,395 205,415 C195,435 180,440 150,440 Z';
+
+    return '' +
+      '<svg class="gc-svg" viewBox="0 0 300 800" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Guitar preview">' +
+      '<defs>' +
+      '<radialGradient id="gc-sheen" cx="35%" cy="30%" r="75%"><stop offset="0" stop-color="#fff" stop-opacity=".35"/><stop offset=".5" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".25"/></radialGradient>' +
+      '<linearGradient id="gc-neck-sheen" x1="0" x2="1"><stop offset="0" stop-color="#000" stop-opacity=".25"/><stop offset=".5" stop-color="#fff" stop-opacity=".1"/><stop offset="1" stop-color="#000" stop-opacity=".25"/></linearGradient>' +
+      '</defs>' +
+      // Body
+      '<path data-slot="body" d="' + body + '" fill="#9e1b22"/>' +
+      '<path d="' + body + '" fill="url(#gc-sheen)"/>' +
+      '<path d="' + body + '" fill="none" stroke="#000" stroke-opacity=".3" stroke-width="2.5"/>' +
+      // Pickguard
+      '<path data-slot="pickguard" d="M112,470 C96,500 88,560 94,620 C100,690 140,735 170,722 L176,600 C188,570 196,520 186,470 Z" fill="#1a1a1a" stroke="#000" stroke-opacity=".25"/>' +
+      // Headstock + tuners
+      '<path data-slot="headstock" d="M128,162 L122,62 C121,40 140,26 160,28 C180,30 183,50 178,72 L172,162 Z" fill="#c9a46b" stroke="#000" stroke-opacity=".25"/>' +
+      '<g data-slot="hardware" fill="#c7cbd0">' +
+      '<circle cx="114" cy="62" r="7"/><circle cx="114" cy="96" r="7"/><circle cx="114" cy="130" r="7"/>' +
+      '<circle cx="186" cy="62" r="7"/><circle cx="186" cy="96" r="7"/><circle cx="186" cy="130" r="7"/>' +
+      '</g>' +
+      // Neck / fretboard
+      '<rect data-slot="fretboard" x="135" y="160" width="30" height="305" rx="3" fill="#4a2a1a"/>' +
+      '<rect x="135" y="160" width="30" height="305" rx="3" fill="url(#gc-neck-sheen)"/>' +
+      fretLines + inlays +
+      '<rect x="133" y="157" width="34" height="5" rx="1" fill="#efe9dc"/>' +
+      // Pickups
+      '<rect data-slot="pickups" x="120" y="500" width="60" height="26" rx="4" fill="#161616"/>' +
+      '<rect data-slot="pickups" x="120" y="590" width="60" height="26" rx="4" fill="#161616"/>' +
+      '<g fill="#000" fill-opacity=".3">' +
+      [0, 1, 2, 3, 4, 5].map(function (i) {
+        var x = 130 + i * 8;
+        return '<circle cx="' + x + '" cy="507" r="2"/><circle cx="' + x + '" cy="519" r="2"/><circle cx="' + x + '" cy="597" r="2"/><circle cx="' + x + '" cy="609" r="2"/>';
+      }).join('') +
+      '</g>' +
+      // Bridge, tailpiece, knobs, switch
+      '<g data-slot="hardware" fill="#c7cbd0">' +
+      '<rect x="118" y="680" width="64" height="16" rx="3"/>' +
+      '<rect x="122" y="712" width="56" height="10" rx="5"/>' +
+      '<circle cx="212" cy="650" r="10"/><circle cx="226" cy="690" r="10"/><circle cx="206" cy="726" r="10"/>' +
+      '<circle cx="212" cy="560" r="6"/>' +
+      '</g>' +
+      strings +
+      '</svg>';
+  }
+
+  function Configurator(root) {
+    this.root = root;
+    this.cfg = JSON.parse(root.querySelector('[data-configurator-config]').textContent);
+    this.groups = this.groupChoices(this.cfg.choices || []);
+    this.selection = {};
+    this.fmt = new Intl.NumberFormat(this.cfg.locale || undefined, {
+      style: 'currency',
+      currency: this.cfg.currency || 'USD'
+    });
+    this.build();
+    this.applyInitialSelection();
+    this.render();
+  }
+
+  Configurator.prototype.money = function (cents) {
+    return this.fmt.format((cents || 0) / 100);
+  };
+
+  Configurator.prototype.groupChoices = function (choices) {
+    var groups = [];
+    var byKey = {};
+    choices.forEach(function (c) {
+      var gkey = slug(c.group) || 'options';
+      if (!byKey[gkey]) {
+        byKey[gkey] = { key: gkey, name: c.group || 'Options', choices: [] };
+        groups.push(byKey[gkey]);
+      }
+      c.key = slug(c.label);
+      c.groupKey = gkey;
+      byKey[gkey].choices.push(c);
+    });
+    return groups;
+  };
+
+  Configurator.prototype.build = function () {
+    var self = this;
+    var root = this.root;
+    var uid = this.cfg.sectionId || Math.random().toString(36).slice(2);
+
+    // Preview
+    this.stage = root.querySelector('[data-gc-stage]');
+    if (!this.cfg.baseImage) {
+      this.stage.insertAdjacentHTML('afterbegin', guitarSVG());
+    }
+    this.layers = root.querySelector('[data-gc-layers]');
+
+    // Option groups
+    var optionsEl = root.querySelector('[data-gc-options]');
+    this.groups.forEach(function (g) {
+      var current = el('span', { class: 'gc-group-current' });
+      var list = el('div', { class: 'gc-choices' });
+      g.choices.forEach(function (c) {
+        var input = el('input', {
+          type: 'radio',
+          class: 'gc-visually-hidden',
+          name: 'gc-' + uid + '-' + g.key,
+          value: c.key
+        });
+        input.addEventListener('change', function () {
+          self.selection[g.key] = c;
+          self.render();
+        });
+        var swatch = el('span', { class: 'gc-swatch', 'aria-hidden': 'true' });
+        if (c.thumb) swatch.style.backgroundImage = 'url("' + c.thumb + '")';
+        else if (c.swatch) swatch.style.backgroundColor = c.swatch;
+        else swatch.classList.add('gc-swatch--empty');
+        var price = c.upchargePrice > 0 ? el('span', { class: 'gc-choice-price', text: '+' + self.money(c.upchargePrice) }) : null;
+        list.appendChild(el('label', { class: 'gc-choice' }, [
+          input, swatch, el('span', { class: 'gc-choice-label', text: c.label }), price
+        ]));
+      });
+      g.currentEl = current;
+      g.listEl = list;
+      optionsEl.appendChild(el('fieldset', { class: 'gc-group' }, [
+        el('legend', { class: 'gc-group-name' }, [document.createTextNode(g.name + ': '), current]),
+        list
+      ]));
+    });
+
+    this.summaryEl = root.querySelector('[data-gc-summary]');
+    this.totalEl = root.querySelector('[data-gc-total]');
+    this.messageEl = root.querySelector('[data-gc-message]');
+    this.addBtn = root.querySelector('[data-gc-add]');
+    this.shareBtn = root.querySelector('[data-gc-share]');
+
+    if (!this.cfg.product || !this.cfg.product.variantId) {
+      this.addBtn.disabled = true;
+      this.showMessage('Choose a base product for this section in the theme editor.', true);
+    }
+
+    this.addBtn.addEventListener('click', function () { self.addToCart(); });
+    if (this.shareBtn) this.shareBtn.addEventListener('click', function () { self.share(); });
+  };
+
+  Configurator.prototype.applyInitialSelection = function () {
+    var params = new URLSearchParams(window.location.search);
+    var self = this;
+    this.groups.forEach(function (g) {
+      var fromUrl = params.get(g.key);
+      var pick = g.choices.filter(function (c) { return c.key === fromUrl; })[0] ||
+        g.choices.filter(function (c) { return c.isDefault; })[0] ||
+        g.choices[0];
+      self.selection[g.key] = pick;
+    });
+  };
+
+  Configurator.prototype.selected = function () {
+    var self = this;
+    return this.groups.map(function (g) { return { group: g, choice: self.selection[g.key] }; });
+  };
+
+  Configurator.prototype.total = function () {
+    return this.selected().reduce(function (sum, s) {
+      return sum + (s.choice.upchargePrice || 0);
+    }, (this.cfg.product && this.cfg.product.price) || 0);
+  };
+
+  Configurator.prototype.render = function () {
+    var self = this;
+    var sel = this.selected();
+
+    // Option UI
+    sel.forEach(function (s) {
+      s.group.currentEl.textContent = s.choice.label;
+      var input = s.group.listEl.querySelector('input[value="' + s.choice.key + '"]');
+      if (input) input.checked = true;
+    });
+
+    // Preview: recolour SVG parts, or stack photo layers
+    var svg = this.stage.querySelector('.gc-svg');
+    var imageLayers = [];
+    sel.forEach(function (s) {
+      var c = s.choice;
+      if (svg && c.slot) {
+        svg.querySelectorAll('[data-slot="' + c.slot + '"]').forEach(function (part) {
+          if (c.swatch) part.setAttribute('fill', c.swatch);
+          part.style.visibility = c.image ? 'hidden' : '';
+        });
+      }
+      if (c.image) imageLayers.push(c);
+    });
+    imageLayers.sort(function (a, b) {
+      return SLOT_ORDER.indexOf(a.slot) - SLOT_ORDER.indexOf(b.slot);
+    });
+    this.layers.innerHTML = '';
+    imageLayers.forEach(function (c) {
+      self.layers.appendChild(el('img', { src: c.image, alt: '', loading: 'lazy' }));
+    });
+
+    // Summary + total
+    this.summaryEl.innerHTML = '';
+    var base = this.cfg.product || {};
+    this.summaryEl.appendChild(el('li', {}, [
+      el('span', { text: base.title || 'Base model' }),
+      el('span', { text: this.money(base.price) })
+    ]));
+    sel.forEach(function (s) {
+      self.summaryEl.appendChild(el('li', {}, [
+        el('span', { text: s.group.name + ': ' + s.choice.label }),
+        el('span', { text: s.choice.upchargePrice > 0 ? '+' + self.money(s.choice.upchargePrice) : '—' })
+      ]));
+    });
+    this.totalEl.textContent = this.money(this.total());
+
+    // Keep the URL shareable
+    if (window.history && window.history.replaceState) {
+      var params = new URLSearchParams(window.location.search);
+      sel.forEach(function (s) { params.set(s.group.key, s.choice.key); });
+      window.history.replaceState(null, '', window.location.pathname + '?' + params.toString() + window.location.hash);
+    }
+  };
+
+  Configurator.prototype.showMessage = function (text, isError) {
+    this.messageEl.textContent = text;
+    this.messageEl.classList.toggle('gc-message--error', !!isError);
+  };
+
+  Configurator.prototype.addToCart = function () {
+    var self = this;
+    var buildId = Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 6).toUpperCase();
+    var sel = this.selected();
+
+    var properties = { 'Build ID': buildId };
+    sel.forEach(function (s) { properties[s.group.name] = s.choice.label; });
+
+    var items = [{ id: this.cfg.product.variantId, quantity: 1, properties: properties }];
+    sel.forEach(function (s) {
+      if (s.choice.upchargeVariantId) {
+        items.push({
+          id: s.choice.upchargeVariantId,
+          quantity: 1,
+          properties: { 'Build ID': buildId, 'Option': s.group.name + ': ' + s.choice.label }
+        });
+      }
+    });
+
+    if (this.root.hasAttribute('data-demo')) {
+      console.log('Demo mode — would POST to /cart/add.js:', JSON.stringify({ items: items }, null, 2));
+      this.showMessage('Demo: build ' + buildId + ' would be added to the cart (' + items.length + ' line items, ' + this.money(this.total()) + ').');
+      return;
+    }
+
+    var routeRoot = (window.Shopify && window.Shopify.routes && window.Shopify.routes.root) || '/';
+    this.addBtn.disabled = true;
+    this.showMessage('Adding your build…');
+
+    fetch(routeRoot + 'cart/add.js', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ items: items })
+    })
+      .then(function (res) {
+        return res.json().then(function (data) {
+          if (!res.ok) throw new Error(data.description || data.message || 'Could not add to cart');
+          return data;
+        });
+      })
+      .then(function () {
+        window.location.href = routeRoot + 'cart';
+      })
+      .catch(function (err) {
+        self.addBtn.disabled = false;
+        self.showMessage(err.message, true);
+      });
+  };
+
+  Configurator.prototype.share = function () {
+    var self = this;
+    var url = window.location.href;
+    var done = function () { self.showMessage('Link to this build copied.'); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(done, function () { window.prompt('Copy this link:', url); });
+    } else {
+      window.prompt('Copy this link:', url);
+    }
+  };
+
+  function init(scope) {
+    (scope || document).querySelectorAll('[data-guitar-configurator]').forEach(function (root) {
+      if (root.__gc) return;
+      root.__gc = new Configurator(root);
+    });
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { init(); });
+  else init();
+
+  // Re-initialise when the section is edited in the Shopify theme editor
+  document.addEventListener('shopify:section:load', function (e) { init(e.target); });
+})();
+</script>
+</body></html>
