@@ -1,0 +1,526 @@
+/*
+ * MESA/Boogie Custom Amp Configurator for Shopify
+ * Reads options from the JSON rendered by sections/amp-configurator.liquid,
+ * draws a live preview of the amp, and adds the build (plus upcharge items) to the cart.
+ */
+(function () {
+  'use strict';
+
+  // Cabinet shapes. w/h are in SVG units (viewBox 800 x 700).
+  var FORMATS = {
+    head:   { w: 640, h: 250, panel: 'bottom', knobs: 8, handle: true,  logoSize: 44 },
+    combo:  { w: 520, h: 470, panel: 'top',    knobs: 7, handle: true,  logoSize: 54 },
+    cab212: { w: 660, h: 390, panel: null,     knobs: 0, handle: true,  logoSize: 60 },
+    cab412: { w: 560, h: 560, panel: null,     knobs: 0, handle: false, logoSize: 62 }
+  };
+  var VB_W = 800, VB_H = 700, FLOOR = 668;
+  var SLOT_ORDER = ['covering', 'panel', 'grille', 'piping', 'corners', 'handle', 'other'];
+
+  // ---------- helpers ----------
+  function slug(s) {
+    return String(s || '').toLowerCase().trim().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+  }
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+  function el(tag, attrs, children) {
+    var node = document.createElement(tag);
+    Object.keys(attrs || {}).forEach(function (k) {
+      if (k === 'text') node.textContent = attrs[k];
+      else if (k === 'html') node.innerHTML = attrs[k];
+      else node.setAttribute(k, attrs[k]);
+    });
+    (children || []).forEach(function (c) { if (c) node.appendChild(c); });
+    return node;
+  }
+  function rect(x, y, w, h, rx) {
+    return function (extra) {
+      return '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h + '" rx="' + (rx || 0) + '" ' + extra + '/>';
+    };
+  }
+  function path(d, transform) {
+    return function (extra) {
+      return '<path d="' + d + '"' + (transform ? ' transform="' + transform + '"' : '') + ' ' + extra + '/>';
+    };
+  }
+  function circle(cx, cy, r) {
+    return function (extra) { return '<circle cx="' + cx + '" cy="' + cy + '" r="' + r + '" ' + extra + '/>'; };
+  }
+
+  // ---------- textures ----------
+  function grainFilter(id, freq, octaves, k, b) {
+    return '<filter id="' + id + '" x="0" y="0" width="100%" height="100%">' +
+      '<feTurbulence type="fractalNoise" baseFrequency="' + freq + '" numOctaves="' + octaves + '" seed="7" stitchTiles="stitch"/>' +
+      '<feColorMatrix type="matrix" values="0 0 0 0 0  0 0 0 0 0  0 0 0 0 0  ' + k + ' 0 0 0 ' + b + '"/>' +
+      '<feComposite in2="SourceAlpha" operator="in"/></filter>';
+  }
+
+  function defsMarkup(p) {
+    return '<defs>' +
+      grainFilter(p + 'f-bronco', '1.1', 2, '1.3', '-0.5') +
+      grainFilter(p + 'f-taurus', '0.38', 3, '1.6', '-0.62') +
+      grainFilter(p + 'f-leather', '1.8', 1, '1.0', '-0.42') +
+      grainFilter(p + 'f-wood', '0.004 0.09', 3, '1.8', '-0.6') +
+      '<pattern id="' + p + 'p-croc" width="34" height="52" patternUnits="userSpaceOnUse">' +
+        '<rect x="1.5" y="1.5" width="31" height="23" rx="8" fill="#fff" fill-opacity=".06" stroke="#000" stroke-opacity=".45" stroke-width="2"/>' +
+        '<rect x="-15.5" y="27.5" width="31" height="23" rx="8" fill="#fff" fill-opacity=".06" stroke="#000" stroke-opacity=".45" stroke-width="2"/>' +
+        '<rect x="18.5" y="27.5" width="31" height="23" rx="8" fill="#fff" fill-opacity=".06" stroke="#000" stroke-opacity=".45" stroke-width="2"/>' +
+      '</pattern>' +
+      '<pattern id="' + p + 'p-jute" width="4" height="4" patternUnits="userSpaceOnUse">' +
+        '<rect width="4" height="2" fill="#000" fill-opacity=".22"/><rect width="2" height="4" fill="#fff" fill-opacity=".1"/>' +
+      '</pattern>' +
+      '<pattern id="' + p + 'p-wicker" width="16" height="16" patternUnits="userSpaceOnUse" patternTransform="rotate(45)">' +
+        '<rect width="16" height="16" fill="#000" fill-opacity=".35"/>' +
+        '<rect x="1" y="1" width="6" height="14" rx="2" fill="#fff" fill-opacity=".18"/>' +
+        '<rect x="9" y="1" width="6" height="14" rx="2" fill="#000" fill-opacity=".05"/>' +
+        '<rect x="1" y="9" width="14" height="6" rx="2" fill="#fff" fill-opacity=".1"/>' +
+      '</pattern>' +
+      '<linearGradient id="' + p + 'g-metal" x1="0" y1="0" x2="1" y2="1">' +
+        '<stop offset="0" stop-color="#fff" stop-opacity=".7"/><stop offset=".45" stop-color="#fff" stop-opacity=".05"/>' +
+        '<stop offset=".55" stop-color="#000" stop-opacity=".25"/><stop offset="1" stop-color="#fff" stop-opacity=".45"/>' +
+      '</linearGradient>' +
+      '<linearGradient id="' + p + 'g-shade" x1="0" y1="0" x2="0" y2="1">' +
+        '<stop offset="0" stop-color="#fff" stop-opacity=".16"/><stop offset=".35" stop-color="#fff" stop-opacity="0"/>' +
+        '<stop offset="1" stop-color="#000" stop-opacity=".28"/>' +
+      '</linearGradient>' +
+      '<linearGradient id="' + p + 'g-logo" x1="0" y1="0" x2="0" y2="1">' +
+        '<stop offset="0" stop-color="#ffffff"/><stop offset=".5" stop-color="#c9ccd0"/><stop offset="1" stop-color="#8d9298"/>' +
+      '</linearGradient>' +
+      '<radialGradient id="' + p + 'g-floor"><stop offset="0" stop-color="#000" stop-opacity=".35"/><stop offset="1" stop-color="#000" stop-opacity="0"/></radialGradient>' +
+      '</defs>';
+  }
+
+  function textureOverlay(shape, tex, p) {
+    switch (tex) {
+      case 'bronco': case 'taurus': case 'leather': case 'wood':
+        return shape('fill="#000" filter="url(#' + p + 'f-' + tex + ')"');
+      case 'croc':
+        return shape('fill="url(#' + p + 'p-croc)"') + shape('fill="#000" filter="url(#' + p + 'f-leather)"');
+      case 'jute': case 'wicker':
+        return shape('fill="url(#' + p + 'p-' + tex + ')"');
+      case 'metal':
+        return shape('fill="url(#' + p + 'g-metal)"');
+      default:
+        return '';
+    }
+  }
+
+  function surface(shape, opt, p) {
+    return shape('fill="' + esc(opt.color || '#222') + '"') + textureOverlay(shape, opt.texture, p);
+  }
+
+  // ---------- amp drawing ----------
+  function ampSVG(s, p) {
+    var f = FORMATS[s.format] || FORMATS.head;
+    var w = f.w, h = f.h, x = (VB_W - w) / 2, y = FLOOR - 14 - h, r = 14, b = 26;
+    var slots = s.slots;
+    var out = [];
+
+    out.push('<ellipse cx="' + VB_W / 2 + '" cy="' + (FLOOR + 4) + '" rx="' + w * 0.6 + '" ry="20" fill="url(#' + p + 'g-floor)"/>');
+
+    // Handle (drawn first so the cabinet overlaps its base)
+    if (f.handle && slots.handle) {
+      var hw = 170, hx = VB_W / 2 - hw / 2;
+      out.push(rect(hx - 16, y - 9, 30, 18, 3)('fill="#1a1a1a"'));
+      out.push(rect(hx + hw - 14, y - 9, 30, 18, 3)('fill="#1a1a1a"'));
+      var strap = rect(hx, y - 16, hw, 18, 9);
+      out.push(surface(strap, slots.handle, p));
+      out.push(strap('fill="url(#' + p + 'g-shade)"'));
+      out.push(strap('fill="none" stroke="#000" stroke-opacity=".45"'));
+    }
+
+    // Feet
+    out.push(rect(x + 40, y + h - 4, 54, 18, 4)('fill="#141414"'));
+    out.push(rect(x + w - 94, y + h - 4, 54, 18, 4)('fill="#141414"'));
+
+    // Cabinet covering
+    var body = rect(x, y, w, h, r);
+    out.push(surface(body, slots.covering || { color: '#1b1b1b', texture: 'bronco' }, p));
+    out.push(body('fill="url(#' + p + 'g-shade)"'));
+    out.push(body('fill="none" stroke="#000" stroke-opacity=".5" stroke-width="2"'));
+
+    // Front layout
+    var ix = x + b, iy = y + b, iw = w - 2 * b, ih = h - 2 * b;
+    var panel = null, grille = { x: ix, y: iy, w: iw, h: ih };
+    if (f.panel === 'bottom') {
+      var ph = Math.round(ih * 0.4);
+      panel = { x: ix, y: iy + ih - ph, w: iw, h: ph };
+      grille = { x: ix, y: iy, w: iw, h: ih - ph - 12 };
+    } else if (f.panel === 'top') {
+      panel = { x: ix, y: iy, w: iw, h: 74 };
+      grille = { x: ix, y: iy + 86, w: iw, h: ih - 86 };
+    }
+
+    // Grille
+    var gr = rect(grille.x, grille.y, grille.w, grille.h, 6);
+    out.push(surface(gr, slots.grille || { color: '#b39c72', texture: 'jute' }, p));
+    out.push(gr('fill="none" stroke="#000" stroke-opacity=".35" stroke-width="10"'));
+    if (slots.piping) {
+      out.push(rect(grille.x - 3, grille.y - 3, grille.w + 6, grille.h + 6, 8)(
+        'fill="none" stroke="' + esc(slots.piping.color) + '" stroke-width="5"'));
+      out.push(rect(grille.x - 5.5, grille.y - 5.5, grille.w + 11, grille.h + 11, 10)(
+        'fill="none" stroke="#000" stroke-opacity=".25" stroke-width="1"'));
+    }
+
+    // Control panel
+    if (panel) {
+      var pr = rect(panel.x, panel.y, panel.w, panel.h, 6);
+      out.push(surface(pr, slots.panel || { color: '#111' }, p));
+      out.push(pr('fill="url(#' + p + 'g-shade)"'));
+      out.push(pr('fill="none" stroke="#000" stroke-opacity=".5"'));
+      var cy = panel.y + panel.h / 2;
+      var kr = Math.min(15, panel.h * 0.22);
+      out.push(circle(panel.x + 34, cy, 9)('fill="#1a1a1a" stroke="#b9bec4" stroke-width="3"'));
+      var start = panel.x + 80, end = panel.x + panel.w - 80;
+      for (var i = 0; i < f.knobs; i++) {
+        var kx = start + (end - start) * (f.knobs === 1 ? 0.5 : i / (f.knobs - 1));
+        var ang = -135 + ((i * 47) % 270);
+        out.push('<g transform="translate(' + kx + ',' + cy + ')">' +
+          '<circle r="' + (kr + 3) + '" fill="#000" fill-opacity=".35"/>' +
+          '<circle r="' + kr + '" fill="#0e0e0e" stroke="#4a4a4a" stroke-width="1.5"/>' +
+          '<line x1="0" y1="0" x2="0" y2="' + -(kr - 3) + '" stroke="#f2f2f2" stroke-width="2" stroke-linecap="round" transform="rotate(' + ang + ')"/>' +
+          '<circle cx="' + -kr * 0.3 + '" cy="' + -kr * 0.35 + '" r="' + kr * 0.35 + '" fill="#fff" fill-opacity=".08"/>' +
+          '</g>');
+      }
+      out.push(circle(panel.x + panel.w - 36, cy, 8)('fill="#c0261f" stroke="#8d9298" stroke-width="3"'));
+      out.push(circle(panel.x + panel.w - 38, cy - 2, 2.5)('fill="#fff" fill-opacity=".6"'));
+    }
+
+    // Logo
+    var lx = grille.x + grille.w / 2;
+    var ly = f.panel === 'bottom' ? grille.y + grille.h / 2 : grille.y + Math.min(grille.h * 0.3, 90);
+    if (s.logoImage) {
+      var lw = Math.min(260, grille.w * 0.6), lh = f.logoSize * 1.6;
+      out.push('<image href="' + esc(s.logoImage) + '" x="' + (lx - lw / 2) + '" y="' + (ly - lh / 2) + '" width="' + lw + '" height="' + lh + '" preserveAspectRatio="xMidYMid meet"/>');
+    } else if (s.logoText) {
+      out.push('<text x="' + lx + '" y="' + (ly + f.logoSize / 3) + '" text-anchor="middle" ' +
+        'font-family="\'Brush Script MT\',\'Segoe Script\',\'Snell Roundhand\',\'Apple Chancery\',cursive" font-style="italic" ' +
+        'font-size="' + f.logoSize + '" fill="url(#' + p + 'g-logo)" stroke="#000" stroke-opacity=".55" stroke-width="1">' +
+        esc(s.logoText) + '</text>');
+    }
+
+    // Corners
+    if (slots.corners) {
+      var c = 54, cr = r;
+      var d = 'M0,' + c + ' L0,' + cr + ' Q0,0 ' + cr + ',0 L' + c + ',0 Q' + c * 0.42 + ',' + c * 0.42 + ' 0,' + c + ' Z';
+      [[x, y, 0], [x + w, y, 90], [x + w, y + h, 180], [x, y + h, 270]].forEach(function (k) {
+        var corner = path(d, 'translate(' + k[0] + ',' + k[1] + ') rotate(' + k[2] + ')');
+        var isMetal = slots.corners.texture === 'metal';
+        out.push(surface(corner, { color: slots.corners.color, texture: isMetal ? 'metal' : 'leather' }, p));
+        out.push(corner('fill="none" stroke="#000" stroke-opacity=".45"'));
+        if (isMetal) {
+          out.push('<circle cx="0" cy="0" r="3" fill="#5d636a" transform="translate(' + k[0] + ',' + k[1] + ') rotate(' + k[2] + ') translate(' + c * 0.24 + ',' + c * 0.24 + ')"/>');
+        }
+      });
+    }
+
+    return '<svg class="gc-svg" viewBox="0 0 ' + VB_W + ' ' + VB_H + '" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="' + esc(s.title) + ' preview">' +
+      out.join('') + '</svg>';
+  }
+
+  function swatchSVG(opt, p) {
+    var c = circle(20, 20, 19);
+    return '<svg viewBox="0 0 40 40" aria-hidden="true">' + surface(c, opt, p) +
+      c('fill="none" stroke="#000" stroke-opacity=".2"') + '</svg>';
+  }
+
+  // ---------- configurator ----------
+  function Configurator(root) {
+    this.root = root;
+    this.cfg = JSON.parse(root.querySelector('[data-configurator-config]').textContent);
+    this.p = 'gc' + String(this.cfg.sectionId || Math.random().toString(36).slice(2, 8)).replace(/[^a-zA-Z0-9]/g, '') + '-';
+    this.fmt = new Intl.NumberFormat(this.cfg.locale || undefined, { style: 'currency', currency: this.cfg.currency || 'USD' });
+    this.groups = this.makeGroups();
+    this.selection = {};
+    this.build();
+    this.applyInitialSelection();
+    this.render();
+  }
+
+  Configurator.prototype.money = function (cents) {
+    return this.fmt.format((cents || 0) / 100);
+  };
+
+  Configurator.prototype.makeGroups = function () {
+    var groups = [];
+    var models = (this.cfg.models || []).map(function (m) {
+      m.key = slug(m.label);
+      return m;
+    });
+    if (models.length) groups.push({ key: 'model', name: 'Model', isModel: true, choices: models });
+
+    var byKey = {};
+    (this.cfg.choices || []).forEach(function (c) {
+      var gkey = slug(c.group) || 'options';
+      if (gkey === 'model') gkey = 'model-option';
+      if (!byKey[gkey]) {
+        byKey[gkey] = { key: gkey, name: c.group || 'Options', slot: c.slot, choices: [] };
+        groups.push(byKey[gkey]);
+      }
+      c.key = slug(c.label);
+      byKey[gkey].choices.push(c);
+    });
+    return groups;
+  };
+
+  Configurator.prototype.build = function () {
+    var self = this;
+    var root = this.root;
+    var p = this.p;
+
+    // Shared texture definitions for the preview and the swatches
+    root.insertAdjacentHTML('afterbegin',
+      '<svg class="gc-defs" width="0" height="0" aria-hidden="true" focusable="false">' + defsMarkup(p) + '</svg>');
+
+    this.svgHost = root.querySelector('[data-gc-svg]');
+    this.layers = root.querySelector('[data-gc-layers]');
+    this.captionEl = root.querySelector('[data-gc-caption]');
+
+    var optionsEl = root.querySelector('[data-gc-options]');
+    this.groups.forEach(function (g) {
+      var current = el('span', { class: 'gc-group-current' });
+      var stepNum = el('span', { class: 'gc-step' });
+      var list = el('div', { class: 'gc-choices' + (g.isModel ? ' gc-choices--models' : '') });
+
+      g.choices.forEach(function (c) {
+        var input = el('input', { type: 'radio', class: 'gc-visually-hidden', name: p + g.key, value: c.key });
+        input.addEventListener('change', function () {
+          self.selection[g.key] = c;
+          self.render();
+        });
+
+        var parts = [input];
+        if (g.isModel) {
+          if (c.thumb) parts.push(el('img', { class: 'gc-model-thumb', src: c.thumb, alt: '', loading: 'lazy' }));
+          parts.push(el('span', { class: 'gc-choice-label', text: c.label }));
+          parts.push(el('span', { class: 'gc-choice-price', text: c.variantId ? self.money(c.price) : 'Not linked' }));
+        } else {
+          var sw = el('span', { class: 'gc-swatch' });
+          if (c.thumb) sw.style.backgroundImage = 'url("' + c.thumb + '")';
+          else sw.innerHTML = swatchSVG({ color: c.swatch, texture: c.texture }, p);
+          parts.push(sw);
+          parts.push(el('span', { class: 'gc-choice-label', text: c.label }));
+          if (c.upchargePrice > 0) parts.push(el('span', { class: 'gc-choice-price', text: '+' + self.money(c.upchargePrice) }));
+        }
+        list.appendChild(el('label', { class: 'gc-choice' + (g.isModel ? ' gc-choice--model' : '') }, parts));
+      });
+
+      g.currentEl = current;
+      g.listEl = list;
+      g.stepEl = stepNum;
+      g.fieldset = el('fieldset', { class: 'gc-group' }, [
+        el('legend', { class: 'gc-group-name' }, [stepNum, document.createTextNode(g.name + ': '), current]),
+        list
+      ]);
+      optionsEl.appendChild(g.fieldset);
+    });
+
+    this.summaryEl = root.querySelector('[data-gc-summary]');
+    this.totalEl = root.querySelector('[data-gc-total]');
+    this.messageEl = root.querySelector('[data-gc-message]');
+    this.addBtn = root.querySelector('[data-gc-add]');
+    this.shareBtn = root.querySelector('[data-gc-share]');
+
+    if (!this.groups.length || !this.groups[0].isModel) {
+      this.addBtn.disabled = true;
+      this.showMessage('Add at least one "Amp model" block in the theme editor.', true);
+    }
+    this.addBtn.addEventListener('click', function () { self.addToCart(); });
+    if (this.shareBtn) this.shareBtn.addEventListener('click', function () { self.share(); });
+  };
+
+  Configurator.prototype.applyInitialSelection = function () {
+    var params = new URLSearchParams(window.location.search);
+    var self = this;
+    this.groups.forEach(function (g) {
+      var fromUrl = params.get(g.key);
+      self.selection[g.key] =
+        g.choices.filter(function (c) { return c.key === fromUrl; })[0] ||
+        g.choices.filter(function (c) { return c.isDefault; })[0] ||
+        g.choices[0];
+    });
+  };
+
+  Configurator.prototype.model = function () {
+    return this.selection.model || { label: this.cfg.title || 'Custom amp', format: 'head', price: 0 };
+  };
+
+  // Option groups that apply to the chosen model (e.g. cabinets have no control panel)
+  Configurator.prototype.activeGroups = function () {
+    var f = FORMATS[this.model().format] || FORMATS.head;
+    return this.groups.filter(function (g) {
+      if (g.isModel) return false;
+      if (g.slot === 'panel' && !f.panel) return false;
+      if (g.slot === 'handle' && !f.handle) return false;
+      return true;
+    });
+  };
+
+  Configurator.prototype.total = function () {
+    var self = this;
+    return this.activeGroups().reduce(function (sum, g) {
+      return sum + (self.selection[g.key].upchargePrice || 0);
+    }, this.model().price || 0);
+  };
+
+  Configurator.prototype.render = function () {
+    var self = this;
+    var model = this.model();
+    var active = this.activeGroups();
+
+    // Option UI: show applicable steps, number them, mark selections
+    var step = 0;
+    this.groups.forEach(function (g) {
+      var on = g.isModel || active.indexOf(g) !== -1;
+      g.fieldset.hidden = !on;
+      if (!on) return;
+      step += 1;
+      g.stepEl.textContent = step;
+      var c = self.selection[g.key];
+      g.currentEl.textContent = c.label;
+      var input = g.listEl.querySelector('input[value="' + c.key + '"]');
+      if (input) input.checked = true;
+    });
+
+    // Preview
+    var slots = {};
+    active.forEach(function (g) {
+      var c = self.selection[g.key];
+      if (c.slot) slots[c.slot] = { color: c.swatch, texture: c.texture };
+    });
+
+    var layerImages = active.map(function (g) { return self.selection[g.key]; })
+      .filter(function (c) { return c.image; })
+      .sort(function (a, b) { return SLOT_ORDER.indexOf(a.slot) - SLOT_ORDER.indexOf(b.slot); });
+
+    this.layers.innerHTML = '';
+    if (model.image) {
+      // Real photos/renders: model base image + one transparent layer per option
+      this.svgHost.innerHTML = '';
+      this.layers.appendChild(el('img', { src: model.image, alt: model.label }));
+    } else {
+      this.svgHost.innerHTML = ampSVG({
+        format: model.format,
+        title: model.label,
+        slots: slots,
+        logoImage: this.cfg.logoImage,
+        logoText: this.cfg.logoText
+      }, this.p);
+    }
+    layerImages.forEach(function (c) {
+      self.layers.appendChild(el('img', { src: c.image, alt: '' }));
+    });
+    if (this.captionEl) this.captionEl.textContent = model.label;
+
+    // Summary + total
+    this.summaryEl.innerHTML = '';
+    this.summaryEl.appendChild(el('li', {}, [
+      el('span', { text: model.label }),
+      el('span', { text: this.money(model.price) })
+    ]));
+    active.forEach(function (g) {
+      var c = self.selection[g.key];
+      self.summaryEl.appendChild(el('li', {}, [
+        el('span', { text: g.name + ': ' + c.label }),
+        el('span', { text: c.upchargePrice > 0 ? '+' + self.money(c.upchargePrice) : 'Included' })
+      ]));
+    });
+    this.totalEl.textContent = this.money(this.total());
+    if (this.groups.length && this.groups[0].isModel) {
+      this.addBtn.disabled = !model.variantId;
+      if (!model.variantId) this.showMessage('This model isn\'t linked to a product yet.', true);
+      else if (this.messageEl.classList.contains('gc-message--error')) this.showMessage('');
+    }
+
+    // Shareable URL
+    if (window.history && window.history.replaceState) {
+      var params = new URLSearchParams(window.location.search);
+      this.groups.forEach(function (g) {
+        if (g.isModel || active.indexOf(g) !== -1) params.set(g.key, self.selection[g.key].key);
+        else params.delete(g.key);
+      });
+      window.history.replaceState(null, '', window.location.pathname + '?' + params.toString() + window.location.hash);
+    }
+  };
+
+  Configurator.prototype.showMessage = function (text, isError) {
+    this.messageEl.textContent = text;
+    this.messageEl.classList.toggle('gc-message--error', !!isError);
+  };
+
+  Configurator.prototype.addToCart = function () {
+    var self = this;
+    var model = this.model();
+    var active = this.activeGroups();
+    var buildId = Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 6).toUpperCase();
+
+    var properties = { 'Build ID': buildId };
+    active.forEach(function (g) { properties[g.name] = self.selection[g.key].label; });
+
+    var items = [{ id: model.variantId, quantity: 1, properties: properties }];
+    active.forEach(function (g) {
+      var c = self.selection[g.key];
+      if (c.upchargeVariantId) {
+        items.push({
+          id: c.upchargeVariantId,
+          quantity: 1,
+          properties: { 'Build ID': buildId, 'Option': g.name + ': ' + c.label }
+        });
+      }
+    });
+
+    if (this.root.hasAttribute('data-demo')) {
+      console.log('Demo mode: would POST to /cart/add.js', JSON.stringify({ items: items }, null, 2));
+      this.showMessage('Demo: build ' + buildId + ' would be added to the cart (' + items.length +
+        ' line item' + (items.length > 1 ? 's' : '') + ', ' + this.money(this.total()) + ').');
+      return;
+    }
+
+    var routeRoot = (window.Shopify && window.Shopify.routes && window.Shopify.routes.root) || '/';
+    this.addBtn.disabled = true;
+    this.showMessage('Adding your build…');
+
+    fetch(routeRoot + 'cart/add.js', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      body: JSON.stringify({ items: items })
+    })
+      .then(function (res) {
+        return res.json().then(function (data) {
+          if (!res.ok) throw new Error(data.description || data.message || 'Could not add to cart');
+          return data;
+        });
+      })
+      .then(function () { window.location.href = routeRoot + 'cart'; })
+      .catch(function (err) {
+        self.addBtn.disabled = false;
+        self.showMessage(err.message, true);
+      });
+  };
+
+  Configurator.prototype.share = function () {
+    var self = this;
+    var url = window.location.href;
+    var done = function () { self.showMessage('Link to this build copied.'); };
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(url).then(done, function () { window.prompt('Copy this link:', url); });
+    } else {
+      window.prompt('Copy this link:', url);
+    }
+  };
+
+  function init(scope) {
+    (scope || document).querySelectorAll('[data-amp-configurator]').forEach(function (root) {
+      if (root.__gc) return;
+      root.__gc = new Configurator(root);
+    });
+  }
+
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', function () { init(); });
+  else init();
+
+  // Re-initialise when the section is edited in the Shopify theme editor
+  document.addEventListener('shopify:section:load', function (e) { init(e.target); });
+})();

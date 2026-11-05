@@ -1,51 +1,57 @@
-# Lark Guitars – Custom Guitar Configurator (Shopify)
+# MESA/Boogie Custom Amp Configurator (Shopify)
 
-A "build your own" page like Sweetwater's Mesa/Boogie custom amp configurator:
-customers pick options, see a live preview and running price, then add the build to the cart.
+A "build your own" amp page for a MESA/Boogie dealer store, in the style of Sweetwater's
+MESA custom configurator: customers pick a model, then covering, top panel, grille, piping,
+corners and handle, see a live preview and running price, and add the build to the cart.
 
-![Preview](demo/preview.png)
-
-- `demo/index.html` – standalone demo with sample options (open in a browser, no Shopify needed)
-- `shopify/sections/guitar-configurator.liquid` – the theme section
-- `shopify/assets/guitar-configurator.js` – preview, pricing, cart logic
-- `shopify/assets/guitar-configurator.css` – styles
+- `demo/index.html`: standalone demo with sample options and **sample prices** (open in any browser)
+- `shopify/sections/amp-configurator.liquid`: the theme section
+- `shopify/assets/amp-configurator.js`: preview drawing, pricing, cart logic
+- `shopify/assets/amp-configurator.css`: styles
 
 ## Install
 
 1. **Back up your theme:** Online Store → Themes → ⋯ → Duplicate. Work on the copy.
 2. ⋯ → **Edit code**:
-   - In **sections/**, add a new section `guitar-configurator` and paste in the `.liquid` file.
-   - In **assets/**, add `guitar-configurator.js` and `guitar-configurator.css` and paste in their contents.
-3. **Create the base product**, e.g. "Lark Custom" at $1,899.
-4. **Create upcharge products** for options that cost extra, e.g. "Upcharge – Ebony fretboard" at $120.
-   Set them to *Unlisted*/hidden from search and collections, and don't track inventory.
-5. **Make a page template:** Online Store → Themes → Customize → Pages → create template `custom-build`.
-   Add the **Guitar configurator** section and pick the base product.
-6. **Add options:** each block in the section is one choice. Set its *Option group* (choices with the
-   same group show together), *Choice name*, the *Part* it changes, a *Colour*, and an
-   *Upcharge product* if it costs extra. Tick *Selected by default* on one choice per group.
-7. Create a page (e.g. `/pages/custom-shop`) using the `custom-build` template and link it in your menu.
+   - In **sections/**, add a new section `amp-configurator` and paste in the `.liquid` file.
+   - In **assets/**, add `amp-configurator.js` and `amp-configurator.css` and paste in their contents.
+3. **Create one product per model** you'll offer, e.g. "MESA/Boogie Mark VII Head – Custom Configured",
+   priced from your dealer price list.
+4. **Create upcharge products** for options that cost extra, e.g. "Custom option – Crocodile covering".
+   Hide them from search and collections and don't track inventory.
+5. **Make a page template:** Online Store → Themes → Customize → Pages → create template `custom-amp`,
+   then add the **Amp configurator** section.
+6. **Add "Amp model" blocks:** pick the product and its type (head, 1x12 combo, 2x12 or 4x12 cab).
+   The type sets the preview shape and which steps apply. Cabinets skip the top panel step, and 4x12s skip the handle step.
+7. **Add "Option choice" blocks:** set the *Option group* (Covering, Top panel, Grille, Piping,
+   Corners, Handle), *Choice name*, *Part* it changes, *Colour*, *Texture* (Bronco, Taurus, Crocodile,
+   Hardwood, Jute, Wicker, Leather, Metal) and an *Upcharge product* if it costs extra.
+   Tick *Selected by default* on one choice per group.
+8. Upload the **official MESA logo** from your dealer assets as the section's *Logo image*.
+9. Create a page (e.g. `/pages/mesa-custom`) using the `custom-amp` template and add it to your menu.
 
-## Using real photos instead of the drawing
+Use MESA's current Custom Configured option list and your dealer pricing for the choices.
+The option names in the demo come from public MESA listings, and its prices are placeholders.
 
-The demo draws a placeholder guitar and recolours it. For a realistic look like Sweetwater's:
+## Real photos or renders
 
-1. Photograph (or render) the guitar **from one fixed angle**, same canvas size for every image.
-2. Make a **base photo** (background/shadow) and a **transparent PNG for each part in each option**,
-   e.g. body in each finish, each pickguard, each hardware colour. Each PNG should show only that part.
-3. Set *Base photo* on the section and *Preview layer image* on each choice. The layers stack
-   in the order body → pickguard → fretboard → headstock → pickups → hardware.
-4. Optional: add a *Swatch image* (wood grain, burst) to show instead of a colour dot.
+The preview is drawn in code, so it works immediately. For a photo-real look:
 
-## How the cart works
+1. Ask MESA for dealer imagery, or photograph or render each model **from one fixed angle**.
+2. Set a **Base photo/render** on each model block, then add a transparent PNG **Preview layer image**
+   to each option (e.g. the grille in Wicker, the covering in Navy Crocodile). Layers stack in the order
+   covering → panel → grille → piping → corners → handle.
+3. Optional: a **Swatch image** (a close-up of the real material) replaces the drawn swatch.
 
-"Add build to cart" adds the base product, plus one upcharge product per paid option.
-They share a **Build ID**, and every choice is saved on the order as a line-item property,
-so the order shows exactly what to build. "Share build" copies a link that reopens the same build.
+## How the cart and orders work
 
-**Limitation:** a customer could remove an upcharge line from the cart. Check that the Build ID
-lines match when you fulfil. To lock them together, use Shopify's bundle / Cart Transform
+"Add custom amp to cart" adds the model product plus one upcharge product per paid option.
+They share a **Build ID**, and every choice is saved on the order as a line-item property, so the
+order lists exactly what to submit to MESA. "Share build" copies a link that reopens the same build.
+
+**Limitation:** a customer could remove an upcharge line from the cart. Check that the Build ID lines
+match before placing the order with MESA. To lock them together, use Shopify's bundle / Cart Transform
 features or a product-options app.
 
-**Taking deposits instead:** if you'd rather take a deposit or quote than the full price,
-point the base product at a "Deposit" product. The chosen options still come through on the order.
+**Deposits:** to take a deposit instead of the full price, link the model blocks to deposit products.
+The chosen options still come through on the order.

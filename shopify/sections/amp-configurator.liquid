@@ -1,0 +1,213 @@
+{{ 'amp-configurator.css' | asset_url | stylesheet_tag }}
+<script src="{{ 'amp-configurator.js' | asset_url }}" defer></script>
+
+<section class="gc" data-amp-configurator id="AmpConfigurator-{{ section.id }}">
+  <div class="gc-preview">
+    <div class="gc-stage">
+      <div class="gc-svg-host" data-gc-svg></div>
+      <div class="gc-layers" data-gc-layers></div>
+    </div>
+    <p class="gc-caption" data-gc-caption></p>
+  </div>
+
+  <div class="gc-panel">
+    {%- if section.settings.heading != blank -%}
+      <h2 class="gc-title">{{ section.settings.heading }}</h2>
+    {%- endif -%}
+    {%- if section.settings.subheading != blank -%}
+      <p class="gc-subtitle">{{ section.settings.subheading }}</p>
+    {%- endif -%}
+
+    <div data-gc-options></div>
+
+    <div class="gc-summary">
+      <ul data-gc-summary></ul>
+      <div class="gc-total"><span>Total</span><span data-gc-total></span></div>
+      <div class="gc-actions">
+        <button type="button" class="gc-btn" data-gc-add>{{ section.settings.button_label }}</button>
+        <button type="button" class="gc-btn gc-btn--secondary" data-gc-share>Share build</button>
+      </div>
+      <p class="gc-message" data-gc-message role="status" aria-live="polite"></p>
+      {%- if section.settings.fineprint != blank -%}
+        <p class="gc-fineprint">{{ section.settings.fineprint }}</p>
+      {%- endif -%}
+    </div>
+  </div>
+
+  {%- assign first_model = true -%}
+  {%- assign first_choice = true -%}
+  <script type="application/json" data-configurator-config>
+    {
+      "sectionId": {{ section.id | json }},
+      "currency": {{ cart.currency.iso_code | json }},
+      "locale": {{ request.locale.iso_code | json }},
+      "logoText": {{ section.settings.logo_text | json }},
+      "logoImage": {% if section.settings.logo_image != blank %}{{ section.settings.logo_image | image_url: width: 600 | json }}{% else %}null{% endif %},
+      "models": [
+        {%- for block in section.blocks -%}
+          {%- if block.type == 'model' -%}
+            {%- assign mp = block.settings.product -%}
+            {%- unless first_model -%},{%- endunless -%}
+            {%- assign first_model = false -%}
+            {
+              "label": {{ block.settings.label | default: mp.title | json }},
+              "format": {{ block.settings.format | json }},
+              "variantId": {% if mp %}{{ mp.selected_or_first_available_variant.id | json }}{% else %}null{% endif %},
+              "price": {% if mp %}{{ mp.selected_or_first_available_variant.price | json }}{% else %}0{% endif %},
+              "thumb": {% if block.settings.thumb != blank %}{{ block.settings.thumb | image_url: width: 400 | json }}{% else %}null{% endif %},
+              "image": {% if block.settings.base_image != blank %}{{ block.settings.base_image | image_url: width: 1600 | json }}{% else %}null{% endif %},
+              "isDefault": {{ block.settings.is_default | json }}
+            }
+          {%- endif -%}
+        {%- endfor -%}
+      ],
+      "choices": [
+        {%- for block in section.blocks -%}
+          {%- if block.type == 'choice' -%}
+            {%- assign up = block.settings.upcharge_product -%}
+            {%- unless first_choice -%},{%- endunless -%}
+            {%- assign first_choice = false -%}
+            {
+              "group": {{ block.settings.group | json }},
+              "label": {{ block.settings.label | json }},
+              "slot": {{ block.settings.slot | json }},
+              "swatch": "{{ block.settings.swatch }}",
+              "texture": {{ block.settings.texture | json }},
+              "thumb": {% if block.settings.swatch_image != blank %}{{ block.settings.swatch_image | image_url: width: 120 | json }}{% else %}null{% endif %},
+              "image": {% if block.settings.layer_image != blank %}{{ block.settings.layer_image | image_url: width: 1600 | json }}{% else %}null{% endif %},
+              "upchargeVariantId": {% if up %}{{ up.selected_or_first_available_variant.id | json }}{% else %}null{% endif %},
+              "upchargePrice": {% if up %}{{ up.selected_or_first_available_variant.price | json }}{% else %}0{% endif %},
+              "isDefault": {{ block.settings.is_default | json }}
+            }
+          {%- endif -%}
+        {%- endfor -%}
+      ]
+    }
+  </script>
+</section>
+
+{% schema %}
+{
+  "name": "Amp configurator",
+  "tag": "div",
+  "class": "section-amp-configurator",
+  "settings": [
+    { "type": "text", "id": "heading", "label": "Heading", "default": "MESA/Boogie Custom Configured" },
+    { "type": "text", "id": "subheading", "label": "Subheading", "default": "Choose your amp, then make it yours." },
+    { "type": "text", "id": "button_label", "label": "Button label", "default": "Add custom amp to cart" },
+    { "type": "text", "id": "fineprint", "label": "Fine print", "default": "Custom Configured amps are built to order by MESA/Boogie in Petaluma, CA. Custom orders are non-returnable." },
+    {
+      "type": "image_picker",
+      "id": "logo_image",
+      "label": "Logo image",
+      "info": "Upload the official logo from your MESA dealer assets (transparent PNG). Shown on the preview grille."
+    },
+    {
+      "type": "text",
+      "id": "logo_text",
+      "label": "Logo text fallback",
+      "default": "MESA/Boogie",
+      "info": "Used only if no logo image is set."
+    }
+  ],
+  "blocks": [
+    {
+      "type": "model",
+      "name": "Amp model",
+      "settings": [
+        { "type": "product", "id": "product", "label": "Product", "info": "The Shopify product for this model. Its price is the starting price." },
+        { "type": "text", "id": "label", "label": "Display name", "info": "Defaults to the product title." },
+        {
+          "type": "select",
+          "id": "format",
+          "label": "Type",
+          "options": [
+            { "value": "head", "label": "Head" },
+            { "value": "combo", "label": "1x12 combo" },
+            { "value": "cab212", "label": "2x12 cabinet" },
+            { "value": "cab412", "label": "4x12 cabinet" }
+          ],
+          "default": "head"
+        },
+        { "type": "image_picker", "id": "thumb", "label": "Thumbnail (optional)" },
+        {
+          "type": "image_picker",
+          "id": "base_image",
+          "label": "Base photo/render (optional)",
+          "info": "Replaces the drawn preview. Option layer images stack on top of it, so all must be the same size and angle."
+        },
+        { "type": "checkbox", "id": "is_default", "label": "Selected by default", "default": false }
+      ]
+    },
+    {
+      "type": "choice",
+      "name": "Option choice",
+      "settings": [
+        {
+          "type": "text",
+          "id": "group",
+          "label": "Option group",
+          "default": "Covering",
+          "info": "Choices with the same group name are shown together as one step, e.g. 'Covering', 'Grille'."
+        },
+        { "type": "text", "id": "label", "label": "Choice name", "default": "Black Bronco" },
+        {
+          "type": "select",
+          "id": "slot",
+          "label": "Part of the amp it changes",
+          "options": [
+            { "value": "covering", "label": "Covering" },
+            { "value": "panel", "label": "Top / control panel" },
+            { "value": "grille", "label": "Grille" },
+            { "value": "piping", "label": "Piping" },
+            { "value": "corners", "label": "Corners" },
+            { "value": "handle", "label": "Handle" },
+            { "value": "other", "label": "Other (no preview change)" }
+          ],
+          "default": "covering"
+        },
+        { "type": "color", "id": "swatch", "label": "Colour", "default": "#1c1c1c" },
+        {
+          "type": "select",
+          "id": "texture",
+          "label": "Texture",
+          "options": [
+            { "value": "none", "label": "Smooth" },
+            { "value": "bronco", "label": "Bronco (fine grain)" },
+            { "value": "taurus", "label": "Taurus (coarse grain)" },
+            { "value": "croc", "label": "Crocodile" },
+            { "value": "leather", "label": "Leather" },
+            { "value": "wood", "label": "Hardwood" },
+            { "value": "jute", "label": "Jute (grille)" },
+            { "value": "wicker", "label": "Wicker (grille)" },
+            { "value": "metal", "label": "Metal" }
+          ],
+          "default": "bronco"
+        },
+        { "type": "image_picker", "id": "swatch_image", "label": "Swatch image (optional)", "info": "A close-up of the real material, shown instead of the drawn swatch." },
+        { "type": "image_picker", "id": "layer_image", "label": "Preview layer image (optional)", "info": "Transparent PNG of just this part, for use with model base photos." },
+        { "type": "product", "id": "upcharge_product", "label": "Upcharge product (optional)", "info": "A hidden product priced at this option's extra cost. Leave empty if included." },
+        { "type": "checkbox", "id": "is_default", "label": "Selected by default", "default": false }
+      ]
+    }
+  ],
+  "presets": [
+    {
+      "name": "Amp configurator",
+      "blocks": [
+        { "type": "model", "settings": { "label": "Mark VII Head", "format": "head", "is_default": true } },
+        { "type": "model", "settings": { "label": "Fillmore 25 1x12 Combo", "format": "combo" } },
+        { "type": "model", "settings": { "label": "2x12 Boogie Open Back Cabinet", "format": "cab212" } },
+        { "type": "choice", "settings": { "group": "Covering", "label": "Black Bronco", "slot": "covering", "swatch": "#1c1c1c", "texture": "bronco", "is_default": true } },
+        { "type": "choice", "settings": { "group": "Covering", "label": "Black Taurus", "slot": "covering", "swatch": "#171717", "texture": "taurus" } },
+        { "type": "choice", "settings": { "group": "Covering", "label": "Navy Crocodile", "slot": "covering", "swatch": "#1f2a4a", "texture": "croc" } },
+        { "type": "choice", "settings": { "group": "Grille", "label": "Tan Jute", "slot": "grille", "swatch": "#b39c72", "texture": "jute", "is_default": true } },
+        { "type": "choice", "settings": { "group": "Grille", "label": "Wicker", "slot": "grille", "swatch": "#c9ab78", "texture": "wicker" } },
+        { "type": "choice", "settings": { "group": "Piping", "label": "Tan", "slot": "piping", "swatch": "#c4a57a", "texture": "none", "is_default": true } },
+        { "type": "choice", "settings": { "group": "Corners", "label": "Tan Leather", "slot": "corners", "swatch": "#b48a5a", "texture": "leather", "is_default": true } },
+        { "type": "choice", "settings": { "group": "Handle", "label": "Black", "slot": "handle", "swatch": "#151515", "texture": "leather", "is_default": true } }
+      ]
+    }
+  ]
+}
+{% endschema %}
