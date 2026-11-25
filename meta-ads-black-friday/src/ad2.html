@@ -18,12 +18,13 @@ const story=H>=1900,sq=H<=1080,T=story?260:sq?70:90;
 const img=story?'photo-story.jpg':sq?'photo-square.jpg':'photo-feed.jpg';
 const C={A:{h:'Up to 20% off.',p:'New guitars, amps and pedals. The price drops in your cart. No code, free shipping.'},
  B:{h:'Add to cart.<br>Watch it drop.',p:'Up to 20% off new guitars, amps and pedals. No code needed, and shipping is free.'}}[v];
-const hs=sq?(v=='B'?92:116):(v=='B'?112:140);
+const hs=sq?(v=='B'?92:116):story?(v=='B'?110:118):(v=='B'?112:140);
+const TAGS='<div class="tags"><span class="tag">NO CODE</span><span class="tag">FREE SHIPPING</span></div>';
 const fadeH=sq?560:story?1100:700;
-ad.innerHTML=`<div class="photo" style="background-image:url(${img})"></div>
+ad.innerHTML=`<div class="photo" style="background-image:url(${img});${story?'background-size:114% auto;background-position:center top':''}"></div>
 <div class="fade" style="height:${fadeH}px;background:linear-gradient(#000 0%,rgba(0,0,0,.92) ${story?45:40}%,rgba(0,0,0,.55) 72%,rgba(0,0,0,0) 100%)"></div>
 <div class="bfade" style="height:${story?600:260}px"></div>
-<div class="copy" style="top:${T}px"><div class="eyebrow">BLACK FRIDAY WEEKEND</div>
-<h1 style="font-size:${hs}px">${C.h}</h1><p style="${sq?'font-size:30px;max-width:880px':''}">${C.p}</p></div>
-<div class="tags" style="bottom:${story?380:60}px"><span class="tag">NO CODE</span><span class="tag">FREE SHIPPING</span>${sq?'':'<span class="tag">GUITARS · AMPS · PEDALS</span>'}</div>`;
+<div class="copy" style="top:${T}px;${story?'right:180px':''}"><div class="eyebrow">BLACK FRIDAY WEEKEND</div>
+<h1 style="font-size:${hs}px">${C.h}</h1><p style="${sq?'font-size:30px;max-width:880px':''}">${C.p}</p>${story?TAGS.replace('class="tags"','class="tags" style="position:static;margin-top:34px"'):''}</div>
+<div class="tags" style="bottom:60px;${story?'display:none':''}"><span class="tag">NO CODE</span><span class="tag">FREE SHIPPING</span>${sq?'':'<span class="tag">GUITARS · AMPS · PEDALS</span>'}</div>`;
 </script></body></html>
